@@ -9,6 +9,8 @@ import requests
 import cssselect
 import lxml.html
 import unicodedata
+import platform
+import string
 
 if sys.version_info.major == 3:
     text_type = str
@@ -30,9 +32,15 @@ parser = argparse.ArgumentParser(description='Download InfoQ presentations.')
 parser.add_argument('url', metavar='URL', type=str,
                     help='URL of the presentation to download')
 
+parser.add_argument("--video", help="download only video, no slides", action="store_true")
+
 # Parse the arguments passed to the script
 args = parser.parse_args()
 url = args.url
+only_video = False
+
+if args.video:
+    only_video = True
 
 # Tell infoq that I'm an iPad, so it gives me simpler HTML to parse & mp4 file
 # qto download
@@ -41,6 +49,15 @@ user_agent = (
     "AppleWebKit/531.21.10 (KHTML, like Gecko) Version/4.0.4 Mobile/7B334b "
     "Safari/531.21.10')"
 )
+
+#remove filename for windows
+def removeDisallowedFilenameChars(filename, type):
+    validFilenameChars = "-_.() %s%s" % (string.ascii_letters, string.digits)
+    cleanedFilename = filename
+    if isinstance(title, text_type):
+        cleanedFilename = unicodedata.normalize('NFKD', filename).encode('ASCII', 'ignore')
+
+    return ''.join(c for c in cleanedFilename if c in validFilenameChars)
 
 # Start downloading
 print('Downloading HTML file')
@@ -66,6 +83,10 @@ slides = slides_re.findall(content)
 if not os.path.exists(download_directory):
     os.makedirs(download_directory)
 
+#fix windows issue with directory if title has invalid characters
+if platform.system() == 'Windows':
+    title = removeDisallowedFilenameChars(title, text_type)
+
 # presentation folder path
 if isinstance(title, text_type):
     normalized_title = unicodedata.normalize('NFKD', title)
@@ -77,7 +98,7 @@ if not os.path.exists(presentation_directory):
     os.makedirs(presentation_directory)
 
 # Create a slides folder inside the presentation folder
-if not os.path.exists('{}/slides'.format(presentation_directory)):
+if not os.path.exists('{}/slides'.format(presentation_directory)) and not only_video:
     os.makedirs('{}/slides'.format(presentation_directory))
 
 #Write content
@@ -87,19 +108,20 @@ with open('{}/index.html'.format(presentation_directory), 'w') as f:
     f.flush()
 
 # Download slides
-slides_dir = os.path.join(presentation_directory, 'slides')
-if not os.path.isdir(slides_dir):
-    os.makedirs(slides_dir)
-for i, slide in enumerate(slides):
-    filename = os.path.split(slide)[1]
-    full_path = os.path.join(slides_dir, '{0}'.format(filename))
-    if os.path.exists(full_path):
-        continue
-    print('\rDownloading slide {0} of {1}'.format(i+1, len(slides)), end='')
-    sys.stdout.flush()  # Hack for Python 2
-    url = 'http://www.infoq.com{0}'.format(slide)
-    with open(full_path, 'wb') as f:
-        f.write(requests.get(url).content)
+if not only_video:
+    slides_dir = os.path.join(presentation_directory, 'slides')
+    if not os.path.isdir(slides_dir):
+        os.makedirs(slides_dir)
+    for i, slide in enumerate(slides):
+        filename = os.path.split(slide)[1]
+        full_path = os.path.join(slides_dir, '{0}'.format(filename))
+        if os.path.exists(full_path):
+            continue
+        print('\rDownloading slide {0} of {1}'.format(i+1, len(slides)), end='')
+        sys.stdout.flush()  # Hack for Python 2
+        url = 'http://www.infoq.com{0}'.format(slide)
+        with open(full_path, 'wb') as f:
+            f.write(requests.get(url).content)
 
 print()
 
